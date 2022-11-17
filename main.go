@@ -1,21 +1,5 @@
 package main
 
-/*
-Basic Goals: DONE
-Static Payload json created
-Send to SNS the payload as message
-Test getting message
-
-Next Step Goals: DONE
-Use struct for json payload
-Publish alert to topic based on provided user
-
-MVP Goals
-Send to correct topic based on the request URL
-Use STS over user creds?
-Determine topic to publish to from calling AWS based on topic owner so topics are not defined in code
-*/
-
 import (
 	"bytes"
 	"encoding/json"
@@ -24,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
 
@@ -39,10 +22,12 @@ type Alert struct {
 	TopicArn string `json:"topicArn"`
 }
 
+// ToString takes the Alert struct and dumps it into a nice readable format in a SMS text message
 func (a *Alert) ToString() string {
 	return fmt.Sprintf("\nApp Name: %s\nType: %s\nAlert ID: %s\nSummary: %s\n", a.AppName, a.Type, a.AlertID, a.Summary)
 }
 
+// FetchTopic lists the SNS topics in an account and grabs the arn for the topic matching the oncall username
 func FetchTopic(sess *session.Session, name string) (string, error) {
 	svc := sns.New(sess)
 
@@ -59,6 +44,7 @@ func FetchTopic(sess *session.Session, name string) (string, error) {
 	return "", fmt.Errorf("topic not found")
 }
 
+// PublishTopic sends the alert to the SNS topic to notify engineers
 func (a *Alert) PublishToTopic(sess *session.Session) error {
 	msg := a.ToString()
 	topicArn := a.TopicArn
@@ -78,20 +64,8 @@ func (a *Alert) PublishToTopic(sess *session.Session) error {
 
 func main() {
 
-	/*
-		This test assumes that the front half of the webhook will:
-		* Accept a request from GoAlert with the alert data
-		* The request data is parseable, specifically the Request URL
-		* The webhook URL for each user is unique and contains a single path with users username
-
-		With that data we can:
-		* Parse the user from the URL thats on-call
-		* Fetch the topic for the user
-		* Send the alert data from GoAlert to the topic and notify the engineer
-	*/
-
 	// This mimics a potential webhook URL configured in GoAlert for user anatale
-	sampleUserURL := "https://goalert.apps.appsrefrs01ugw1.p1.openshiftusgov.com/anatale"
+	sampleUserURL := "https://goalert.apps.clusterdomain.openshiftusgov.com/anatale"
 
 	// This mimics a sample request with body that the front end may receive with the alert data
 	// Its merely here to show how we can parse the request to determine the on-call engineer to page
@@ -100,7 +74,7 @@ func main() {
 		"Type":    "Alert",
 		"AlertID": "65",
 		"Summary": "Job did not complete in time",
-		"Details": "[Prometheus Alertmanager UI](https:///console-openshift-console.apps.bsmith-rosa.fvjw.i1.devshiftusgov.com/monitoring)\n\nJob did not complete in time [View](https://prometheus-k8s-openshift-monitoring.apps.bsmith-rosa.fvjw.i1.devshiftusgov.com/graph?g0.expr=kube_job_spec_completions%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22%28openshift-.%2A%7Ckube-.%2A%7Cdefault%29%22%7D+-+kube_job_status_succeeded%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22%28openshift-.%2A%7Ckube-.%2A%7Cdefault%29%22%7D+%3E+0&g0.tab=1)\n\n## Payload\n\n```json\n{\n  \"receiver\": \"GoAlert\",\n  \"status\": \"firing\",\n  \"alerts\": [\n    {\n      \"status\": \"firing\",\n      \"labels\": {\n        \"alertname\": \"KubeJobCompletion\",\n        \"container\": \"kube-rbac-proxy-main\",\n        \"endpoint\": \"https-main\",\n        \"job\": \"kube-state-metrics\",\n        \"job_name\": \"ids-tester-27739025\",\n        \"namespace\": \"openshift-suricata\",\n        \"openshift_io_alert_source\": \"platform\",\n        \"prometheus\": \"openshift-monitoring/k8s\",\n        \"service\": \"kube-state-metrics\",\n        \"severity\": \"warning\"\n      },\n      \"annotations\": {\n        \"description\": \"Job openshift-suricata/ids-tester-27739025 is taking more than 12 hours to complete.\",\n        \"summary\": \"Job did not complete in time\"\n      },\n      \"startsAt\": \"2022-09-28T17:05:20.048Z\",\n      \"endsAt\": \"0001-01-01T00:00:00Z\",\n      \"generatorURL\": \"https://prometheus-k8s-openshift-monitoring.apps.bsmith-rosa.fvjw.i1.devshiftusgov.com/graph?g0.expr=kube_job_spec_completions%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22%28openshift-.%2A%7Ckube-.%2A%7Cdefault%29%22%7D+-+kube_job_status_succeeded%7Bjob%3D%22kube-state-metrics%22%2Cnamespace%3D~%22%28openshift-.%2A%7Ckube-.%2A%7Cdefault%29%22%7D+%3E+0\\u0026g0.tab=1\",\n      \"fingerprint\": \"19da89970cd63433\"\n    }\n  ],\n  \"groupLabels\": {\n    \"alertname\": \"KubeJobCompletion\",\n    \"severity\": \"warning\"\n  },\n  \"commonLabels\": {\n    \"alertname\": \"KubeJobCompletion\",\n    \"container\": \"kube-rbac-proxy-main\",\n    \"endpoint\": \"https-main\",\n    \"job\": \"kube-state-metrics\",\n    \"job_name\": \"ids-tester-27739025\",\n    \"namespace\": \"openshift-suricata\",\n    \"openshift_io_alert_source\": \"platform\",\n    \"prometheus\": \"openshift-monitoring/k8s\",\n    \"service\": \"kube-state-metrics\",\n    \"severity\": \"warning\"\n  },\n  \"commonAnnotations\": {\n    \"description\": \"Job openshift-suricata/ids-tester-27739025 is taking more than 12 hours to complete.\",\n    \"summary\": \"Job did not complete in time\"\n  },\n  \"externalURL\": \"https:///console-openshift-console.apps.bsmith-rosa.fvjw.i1.devshiftusgov.com/monitoring\",\n  \"version\": \"4\",\n  \"groupKey\": \"{}/{}:{alertname=\\\"KubeJobCompletion\\\", severity=\\\"warning\\\"}\",\n  \"truncatedAlerts\": 0\n}\n\n```",
+		"Details": "Sample Alert Output from Alertmanager",
 	})
 	if err != nil {
 		log.Printf("created requestBody failed: %v", err)
@@ -111,7 +85,16 @@ func main() {
 		log.Printf("creating sampleReq failed: %v", err)
 	}
 
-	// From here on, this is parsing the data and publishing to SNS based on info provided
+	// From here on, this is the main logic to parse the alert data and publish to SNS based on info provided
+
+	// Configure AWS session for use later. Instantiang the session with an empty aws.Config
+	// will default to using environment variables -- https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html#specifying-credentials
+	// You will need AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY exported in your system to work
+	sess, err := session.NewSession(&aws.Config{Region: aws.String("us-gov-west-1")})
+	if err != nil {
+		log.Printf("failed to create a session: %v", err)
+	}
+
 	// Decodes the request body into an Alert
 	var testAlert Alert
 	json.NewDecoder(sampleReq.Body).Decode(&testAlert)
@@ -119,16 +102,8 @@ func main() {
 	// Determine who is on-call from url
 	oncallEng := strings.TrimLeft(sampleReq.URL.Path, "/")
 
-	// Find the topic for on-call !!!Username in Webhook URL in GoAlert must match the username listed in topic!!!
-	// Topic format (temporarily for test -- goalert_username)
-	sess, err := session.NewSession(&aws.Config{
-		Region:      aws.String("us-gov-west-1"),
-		Credentials: credentials.NewSharedCredentials("", "goalert-test"),
-	})
-	if err != nil {
-		log.Printf("failed to create a session: %v", err)
-	}
-
+	// Find the topic for on-call !!! Username in Webhook URL in GoAlert must match the username listed in topic !!!
+	// Topic format used for test -- goalert_username)
 	topicArn, err := FetchTopic(sess, oncallEng)
 	if err != nil {
 		log.Printf("failed to fetch topic arn %v", err)
